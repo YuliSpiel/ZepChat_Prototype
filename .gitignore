@@ -1,0 +1,11 @@
+# Virtual environment
+zepvenv/
+
+# macOS system files
+.DS_Store
+
+# test folders
+test/
+
+# text environment files
+*.env
