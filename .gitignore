@@ -1,0 +1,41 @@
+# Virtual environment
+.venv/
+venv/
+env/
+Zepvenv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# macOS system files
+.DS_Store
+
+# test folders
+test/
+
+# Environment files
+*.env
+config/.env
+
+# Model cache
+models_cache/
+outputs/
+
+# User data
+data/
+# But keep grammar ontology structure
+!data/grammar_ontology/
+
+# Archive
+archive/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
