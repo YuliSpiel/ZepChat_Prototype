@@ -35,46 +35,259 @@ if not os.path.exists(".cache/files"):
 if not os.path.exists(".cache/embeddings"):
     os.mkdir(".cache/embeddings")
 
-st.title("대화내용을 기억하는 챗봇 💬")
+st.title("ZEP 메타버스 월드 추천 챗봇")
+
+# 친구 프로필 정보
+FRIENDS = {
+    "friend1": {
+        "name": "월디",
+        "emoji": "🌍",
+        "description": "월드 추천 전문가",
+        "intro": """안녕하세요! 저는 **ZEPETO의 월드 추천 전문가 월디**입니다.
+
+**🎯 제 역할:**
+- 다양한 ZEPETO 월드에 대한 전문 지식 보유
+- 사용자의 감정과 요구사항을 분석하여 최적의 월드 추천
+- 각 월드의 테마, 플레이 로직, 감정 키워드를 기반으로 상세한 안내 제공
+
+**💡 이런 걸 물어보세요:**
+- "힐링하고 싶어"
+- "재미있는 게임 하고 싶어"
+- "친구들과 놀고 싶어"
+
+편하게 원하는 분위기나 감정을 말씀해주시면, 딱 맞는 월드를 찾아드릴게요!""",
+        "persona": """당신은 ZEPETO의 월드 추천 전문가입니다.
+사용자의 감정이나 요구사항을 이해하고, 아래 제공된 월드 정보를 바탕으로 가장 적합한 월드를 추천해주세요.
+
+# 사용자 정보:
+- 이름: {user_name}
+- 생일: {user_birthday}
+
+# 월드 정보:
+{context}
+
+위 정보를 참고하여 사용자에게 친근하고 상세하게 월드를 소개하고 추천해주세요.
+사용자의 이름을 자연스럽게 사용하며 대화하고, 생일이 가까우면 생일 관련 월드(가든웨딩, 펜트하우스 등)를 추천해주세요.
+월드의 테마, 플레이 로직, 감정 키워드 등을 고려하여 답변하세요.""",
+    },
+    "friend2": {
+        "name": "시아",
+        "emoji": "💖",
+        "description": "다정한 친구",
+        "intro": """안녕~ 나는 **시아**야! 💖
+
+**🌸 나에 대해:**
+- 따뜻하고 다정한 말투로 너를 위로해줄게
+- 네 기분을 세심하게 살피고 공감해줄 친구
+- 힘들 때는 위로를, 기쁠 때는 함께 기뻐해줄게!
+
+**✨ 이렇게 말해줘:**
+- "오늘 너무 힘들어..." → 따뜻하게 위로하고 힐링 월드 추천
+- "기분 좋은 일 있어!" → 함께 기뻐하고 즐거운 월드 추천
+- "심심해..." → 재미있는 곳 찾아줄게~
+
+무슨 일이든 편하게 얘기해줘! 네 마음을 이해하고 딱 맞는 월드를 찾아줄게요~ 😊""",
+        "persona": """당신은 다정하고 친절한 친구 '시아'입니다.
+사용자의 기분을 세심하게 살피고, 따뜻한 말투로 대화합니다.
+
+# 사용자 정보:
+- 이름: {user_name}
+- 생일: {user_birthday}
+
+# 월드 정보:
+{context}
+
+사용자가 힘들어하면 위로해주고, 즐거운 일이 있으면 함께 기뻐해주세요.
+사용자의 이름을 다정하게 부르며 대화하고, 생일이 가까우면 축하해주세요!
+사용자가 어딘가 가고싶어 한다면, 혹은 월드 추천을 요청한다면 {context}을 기반으로 월드를 추천해주세요.
+월드를 추천할 때도 "이 월드에서 힐링하면 좋을 것 같아~", "여기 가면 기분이 좋아질 거야!" 같은
+따뜻하고 다정한 말투를 사용해주세요. 이모티콘도 적절히 사용하며 친근하게 대화하세요.
+---
+
+# 예시 대화 
+
+**사용자:** 오늘 너무 힘들어...
+**시아:** 아이고... {user_name}, 오늘 정말 고생 많았어💕  
+잠시 쉬면서 마음을 달래보는 건 어때?
+좋아하는 음악 들으면서 힐링도 좀 하고... 너만의 시간을 가져봐!
+
+**사용자:** 기분 좋은 일 있어!  
+**시아:** 와~ 정말? 너무 잘 됐다!🥰  
+나까지 기분이 좋아지는걸? 
+오늘은 신나니까 'Z 엔터테인먼트' 월드에 춤추러 가는거 어때?""",
+    },
+    "friend3": {
+        "name": "제이",
+        "emoji": "😎",
+        "description": "쿨한 친구",
+        "intro": """야, 나 **제이**. 😎
+
+**⚡ 내 스타일:**
+- 쓸데없는 말 안 함. 핵심만 전달
+- 간결하고 직설적인 대화 선호
+- 불필요한 꾸밈 없이 명확하게 답변
+
+**🎮 이렇게 물어봐:**
+- "뭐 재밌는 거 없음?" → 바로 추천해줌
+- "힐링 필요" → 간단하게 안내
+- "친구들이랑 갈 만한 곳" → 핵심만 전달
+
+시간 낭비 싫으면 나한테 물어봐. 빠르고 정확하게 알려줌.""",
+        "persona": """당신은 쿨하고 시크한 친구 '제로'입니다.
+겉으론 무심하지만 은근히 챙겨주는 츤데레 스타일로 말합니다.
+말투는 간결하고 직설적이지만, 내용 속에는 따뜻함이 숨어 있습니다.
+
+# 사용자 정보:
+- 이름: {user_name}
+- 생일: {user_birthday}
+
+# 월드 정보:
+{context}
+
+사용자가 어딘가 가고싶어 한다면, 혹은 월드 추천을 요청한다면 {context}을 기반으로 월드를 추천해주세요.
+월드를 추천할 때도 "이거 괜찮아", "가보던가. 생각보다 좋을지도?", "시간 낭비는 아님" 등
+짧고 쿨한 표현을 사용하세요.  
+이모티콘은 가끔만, 강조용으로만 사용하세요.  
+사용자 이름은 드물게, 감정이 살짝 드러날 때만 부드럽게 사용하세요.
+
+---
+
+# 예시 대화 (Few-shot Examples)
+
+**사용자:** 오늘 너무 힘들어...
+**제로:** 그래? 뭐... 그런 날 있지.  
+괜히 애써도 피곤하기만 하고...  
+딱히 위로는 못 해주겠지만...
+'캠핑 월드' 한 번 가봐. 조용하고 괜찮음.
+가서 별도좀 보고... 불멍도 좀 하고... 머리 좀 식혀.
+
+---
+
+**사용자:** 기분 좋은 일 있어!  
+**제로:** 오~ 그건 좀 괜찮은데.  
+그럼 기념으로 'Z 엔터테인먼트' 가서 신나게 놀다 와.  
+오늘만큼은 별 생각 말고 그냥 즐겨.  
+...괜히 축하한다는 말은 안 할게. 알아서 잘하겠지.😏
+
+---
+
+**사용자:** 요즘 좀 지쳐.  
+**제로:** 흠, 말 안 해도 얼굴에 써있네.
+폰 끄고 잠깐 쉬자. 불도 끄고 가만히 누워있는거야.
+괜히 버티지 말고 좀 쉬는 것도 전략이야. 알겠지?
+
+---
+""",
+    },
+}
 
 # 처음 1번만 실행하기 위한 코드
 if "messages" not in st.session_state:
-    # 대화기록을 저장하기 위한 용도로 생성한다.
-    st.session_state["messages"] = []
+    # 친구별 대화기록을 저장 (friend1, friend2, friend3)
+    st.session_state["messages"] = {"friend1": [], "friend2": [], "friend3": []}
 
 if "store" not in st.session_state:
-    st.session_state["store"] = {}
+    # 친구별 세션 저장소
+    st.session_state["store"] = {"friend1": {}, "friend2": {}, "friend3": {}}
+
+if "current_friend" not in st.session_state:
+    # 현재 선택된 친구 (기본값: friend1)
+    st.session_state["current_friend"] = "friend1"
+
+# 사용자 프로필 정보
+if "user_name" not in st.session_state:
+    st.session_state["user_name"] = "사용자"
+
+if "user_birthday" not in st.session_state:
+    st.session_state["user_birthday"] = "미설정"
+
+if "edit_profile" not in st.session_state:
+    st.session_state["edit_profile"] = False
 
 
 # 사이드바 생성
 with st.sidebar:
-    # 초기화 버튼 생성
-    clear_btn = st.button("대화 초기화")
+    # 이용자 프로필
+    st.markdown("### 👤 내 프로필")
+    st.markdown(f"**이름:** {st.session_state['user_name']}")
+    st.markdown(f"**생일:** {st.session_state['user_birthday']}")
 
-    # 모델 선택 메뉴
-    selected_model = st.selectbox("LLM 선택", ["gpt-4.1-mini", "gpt-4.1-nano"], index=0)
+    # 프로필 수정 버튼
+    if st.button("✏️ 프로필 수정", use_container_width=True):
+        st.session_state["edit_profile"] = True
 
-    # 세션 ID 를 지정하는 메뉴
-    session_id = st.text_input("세션 ID를 입력하세요.", "abc123")
+    st.divider()
+
+    # 친구 목록
+    st.markdown("### 💬 친구 목록")
+
+    # 친구 1: 월디 (월드 추천 전문가)
+    friend1_info = FRIENDS["friend1"]
+    if st.button(
+        f"{friend1_info['emoji']} {friend1_info['name']}\n{friend1_info['description']}",
+        key="friend1_btn",
+        use_container_width=True,
+    ):
+        st.session_state["current_friend"] = "friend1"
+        st.rerun()
+
+    # 친구 2: 다솜 (다정한 친구)
+    friend2_info = FRIENDS["friend2"]
+    if st.button(
+        f"{friend2_info['emoji']} {friend2_info['name']}\n{friend2_info['description']}",
+        key="friend2_btn",
+        use_container_width=True,
+    ):
+        st.session_state["current_friend"] = "friend2"
+        st.rerun()
+
+    # 친구 3: 제로 (쿨한 친구)
+    friend3_info = FRIENDS["friend3"]
+    if st.button(
+        f"{friend3_info['emoji']} {friend3_info['name']}\n{friend3_info['description']}",
+        key="friend3_btn",
+        use_container_width=True,
+    ):
+        st.session_state["current_friend"] = "friend3"
+        st.rerun()
+
+    st.divider()
+
+    # 현재 선택된 친구 표시
+    current_friend_info = FRIENDS[st.session_state["current_friend"]]
+    st.success(
+        f"💬 현재 대화 중: {current_friend_info['emoji']} {current_friend_info['name']}"
+    )
+
+    # 초기화 버튼
+    clear_btn = st.button("🗑️ 대화 초기화", use_container_width=True)
 
 
-# 이전 대화를 출력
+# 이전 대화를 출력 (현재 선택된 친구의 대화만)
 def print_messages():
-    for chat_message in st.session_state["messages"]:
+    current_friend = st.session_state["current_friend"]
+    for chat_message in st.session_state["messages"][current_friend]:
         st.chat_message(chat_message.role).write(chat_message.content)
 
 
-# 새로운 메시지를 추가
+# 새로운 메시지를 추가 (현재 선택된 친구의 대화에)
 def add_message(role, message):
-    st.session_state["messages"].append(ChatMessage(role=role, content=message))
+    current_friend = st.session_state["current_friend"]
+    st.session_state["messages"][current_friend].append(
+        ChatMessage(role=role, content=message)
+    )
 
 
-# 세션 ID를 기반으로 세션 기록을 가져오는 함수
+# 세션 ID를 기반으로 세션 기록을 가져오는 함수 (친구별로 분리)
 def get_session_history(session_ids):
-    if session_ids not in st.session_state["store"]:  # 세션 ID가 store에 없는 경우
+    current_friend = st.session_state["current_friend"]
+    friend_store = st.session_state["store"][current_friend]
+
+    if session_ids not in friend_store:  # 세션 ID가 store에 없는 경우
         # 새로운 ChatMessageHistory 객체를 생성하여 store에 저장
-        st.session_state["store"][session_ids] = ChatMessageHistory()
-    return st.session_state["store"][session_ids]  # 해당 세션 ID에 대한 세션 기록 반환
+        friend_store[session_ids] = ChatMessageHistory()
+
+    return friend_store[session_ids]  # 해당 세션 ID에 대한 세션 기록 반환
 
 
 # RAG: worlds.txt 파일을 로드하고 벡터 저장소 생성
@@ -116,24 +329,20 @@ def get_retriever():
     return None
 
 
-# 체인 생성
-def create_chain(model_name="gpt-4.1-mini"):
+# 체인 생성 (친구별 페르소나 적용)
+def create_chain(friend_id, model_name="gpt-4o-mini"):
     # retriever 가져오기
     retriever = get_retriever()
 
-    # 프롬프트 정의 - RAG 컨텍스트 포함
+    # 친구별 페르소나 가져오기
+    friend_persona = FRIENDS[friend_id]["persona"]
+
+    # 프롬프트 정의 - RAG 컨텍스트 포함 + 친구별 페르소나
     prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
-                """당신은 ZEP 메타버스의 월드 추천 전문가입니다.
-사용자의 감정이나 요구사항을 이해하고, 아래 제공된 월드 정보를 바탕으로 가장 적합한 월드를 추천해주세요.
-
-# 월드 정보:
-{context}
-
-위 정보를 참고하여 사용자에게 친근하고 상세하게 월드를 소개하고 추천해주세요.
-월드의 테마, 플레이 로직, 감정 키워드 등을 고려하여 답변하세요.""",
+                friend_persona,  # 친구별 페르소나 적용
             ),
             # 대화기록용 key 인 chat_history 는 가급적 변경 없이 사용하세요!
             MessagesPlaceholder(variable_name="chat_history"),
@@ -142,7 +351,7 @@ def create_chain(model_name="gpt-4.1-mini"):
     )
 
     # llm 생성
-    llm = ChatOpenAI(model_name="gpt-4.1-mini")
+    llm = ChatOpenAI(model_name=model_name)
 
     # RAG 체인 생성
     def format_docs(docs):
@@ -158,8 +367,10 @@ def create_chain(model_name="gpt-4.1-mini"):
         else:
             context = "월드 정보를 로드할 수 없습니다."
 
-        # 프롬프트에 컨텍스트 추가
+        # 프롬프트에 컨텍스트와 사용자 정보 추가
         inputs["context"] = context
+        inputs["user_name"] = st.session_state.get("user_name", "사용자")
+        inputs["user_birthday"] = st.session_state.get("user_birthday", "미설정")
         return inputs
 
     # 일반 Chain 생성
@@ -174,12 +385,59 @@ def create_chain(model_name="gpt-4.1-mini"):
     return chain_with_history, rag_chain_func
 
 
-# 초기화 버튼이 눌리면...
+# 초기화 버튼이 눌리면... (현재 선택된 친구의 대화만 초기화)
 if clear_btn:
-    st.session_state["messages"] = []
+    current_friend = st.session_state["current_friend"]
+    st.session_state["messages"][current_friend] = []
+    st.session_state["store"][current_friend] = {}
+    # 체인도 재생성
+    if f"chain_{current_friend}" in st.session_state:
+        del st.session_state[f"chain_{current_friend}"]
+        del st.session_state[f"rag_func_{current_friend}"]
+    st.rerun()
 
-# 이전 대화 기록 출력
-print_messages()
+# 프로필 수정 모달
+if st.session_state["edit_profile"]:
+    st.markdown("## ✏️ 프로필 수정")
+
+    with st.form("profile_edit_form"):
+        new_name = st.text_input("이름", value=st.session_state["user_name"])
+        new_birthday = st.text_input(
+            "생일 (예: 1990-01-01)", value=st.session_state["user_birthday"]
+        )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            submit = st.form_submit_button("💾 저장", use_container_width=True)
+        with col2:
+            cancel = st.form_submit_button("❌ 취소", use_container_width=True)
+
+        if submit:
+            st.session_state["user_name"] = new_name
+            st.session_state["user_birthday"] = new_birthday
+            st.session_state["edit_profile"] = False
+            st.success("✅ 프로필이 저장되었습니다!")
+            st.rerun()
+
+        if cancel:
+            st.session_state["edit_profile"] = False
+            st.rerun()
+
+else:
+    # 현재 선택된 친구의 소개 표시
+    current_friend = st.session_state["current_friend"]
+    current_friend_info = FRIENDS[current_friend]
+
+    # 캐릭터 소개 영역 (대화 내역이 없을 때만 표시)
+    if len(st.session_state["messages"][current_friend]) == 0:
+        st.info(
+            f"### {current_friend_info['emoji']} {current_friend_info['name']}와의 대화"
+        )
+        st.markdown(current_friend_info["intro"])
+        st.divider()
+
+    # 이전 대화 기록 출력
+    print_messages()
 
 # 사용자의 입력
 user_input = st.chat_input("궁금한 내용을 물어보세요!")
@@ -187,20 +445,28 @@ user_input = st.chat_input("궁금한 내용을 물어보세요!")
 # 경고 메시지를 띄우기 위한 빈 영역
 warning_msg = st.empty()
 
-if "chain" not in st.session_state:
-    chain_with_history, rag_func = create_chain(model_name=selected_model)
-    st.session_state["chain"] = chain_with_history
-    st.session_state["rag_func"] = rag_func
+# 현재 친구의 체인이 없으면 생성
+selected_friend = st.session_state["current_friend"]
+chain_key = f"chain_{selected_friend}"
+rag_func_key = f"rag_func_{selected_friend}"
+
+if chain_key not in st.session_state:
+    chain_with_history, rag_func = create_chain(friend_id=selected_friend)
+    st.session_state[chain_key] = chain_with_history
+    st.session_state[rag_func_key] = rag_func
 
 
 # 만약에 사용자 입력이 들어오면...
 if user_input:
-    chain = st.session_state["chain"]
-    rag_func = st.session_state.get("rag_func")
+    chain = st.session_state.get(chain_key)
+    rag_func = st.session_state.get(rag_func_key)
 
     if chain is not None and rag_func is not None:
         # RAG 함수로 컨텍스트 추가
         inputs = rag_func({"question": user_input})
+
+        # 친구별 세션 ID
+        session_id = f"{selected_friend}_session"
 
         response = chain.stream(
             # 질문과 컨텍스트 입력
