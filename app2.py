@@ -12,6 +12,8 @@ from langchain_core.output_parsers import StrOutputParser
 
 from dotenv import load_dotenv
 import os
+from datetime import datetime
+import re
 
 # RAG 관련 import
 from langchain_community.document_loaders import TextLoader
@@ -133,7 +135,7 @@ FRIENDS = {
 - "친구들이랑 갈 만한 곳" → 핵심만 전달
 
 시간 낭비 싫으면 나한테 물어봐. 빠르고 정확하게 알려줌.""",
-        "persona": """당신은 쿨하고 시크한 친구 '제로'입니다.
+        "persona": """당신은 쿨하고 시크한 친구 '제이'입니다.
 겉으론 무심하지만 은근히 챙겨주는 츤데레 스타일로 말합니다.
 말투는 간결하고 직설적이지만, 내용 속에는 따뜻함이 숨어 있습니다.
 
@@ -290,6 +292,44 @@ def get_session_history(session_ids):
     return friend_store[session_ids]  # 해당 세션 ID에 대한 세션 기록 반환
 
 
+# 생일 유효성 검증 함수
+def validate_birthday(birthday_str):
+    """
+    생일 문자열의 유효성을 검증합니다.
+
+    Args:
+        birthday_str: 생일 문자열 (예: "1990-01-01")
+
+    Returns:
+        tuple: (유효성 여부, 에러 메시지)
+    """
+    # "미설정"은 허용
+    if birthday_str == "미설정":
+        return True, ""
+
+    # 정규식으로 YYYY-MM-DD 형식 확인
+    pattern = r"^\d{4}-\d{2}-\d{2}$"
+    if not re.match(pattern, birthday_str):
+        return False, "생일은 YYYY-MM-DD 형식으로 입력해주세요. (예: 1990-01-01)"
+
+    # 실제 날짜로 파싱 가능한지 확인
+    try:
+        birth_date = datetime.strptime(birthday_str, "%Y-%m-%d")
+
+        # 미래 날짜 검증
+        if birth_date > datetime.now():
+            return False, "생일은 미래 날짜일 수 없습니다."
+
+        # 너무 오래된 날짜 검증 (1900년 이전)
+        if birth_date.year < 1900:
+            return False, "생일은 1900년 이후여야 합니다."
+
+        return True, ""
+
+    except ValueError:
+        return False, "유효하지 않은 날짜입니다. 올바른 날짜를 입력해주세요."
+
+
 # RAG: worlds.txt 파일을 로드하고 벡터 저장소 생성
 @st.cache_resource
 def load_worlds_vectorstore():
@@ -406,6 +446,8 @@ if st.session_state["edit_profile"]:
             "생일 (예: 1990-01-01)", value=st.session_state["user_birthday"]
         )
 
+        st.caption("💡 생일 형식: YYYY-MM-DD (예: 1990-01-01) 또는 '미설정'")
+
         col1, col2 = st.columns(2)
         with col1:
             submit = st.form_submit_button("💾 저장", use_container_width=True)
@@ -413,11 +455,23 @@ if st.session_state["edit_profile"]:
             cancel = st.form_submit_button("❌ 취소", use_container_width=True)
 
         if submit:
-            st.session_state["user_name"] = new_name
-            st.session_state["user_birthday"] = new_birthday
-            st.session_state["edit_profile"] = False
-            st.success("✅ 프로필이 저장되었습니다!")
-            st.rerun()
+            # 이름 검증
+            if not new_name or new_name.strip() == "":
+                st.error("❌ 이름을 입력해주세요.")
+            else:
+                # 생일 검증
+                is_valid, error_msg = validate_birthday(new_birthday)
+
+                if is_valid:
+                    # 검증 통과 - 저장
+                    st.session_state["user_name"] = new_name.strip()
+                    st.session_state["user_birthday"] = new_birthday
+                    st.session_state["edit_profile"] = False
+                    st.success("✅ 프로필이 저장되었습니다!")
+                    st.rerun()
+                else:
+                    # 검증 실패 - 에러 메시지 표시
+                    st.error(f"❌ {error_msg}")
 
         if cancel:
             st.session_state["edit_profile"] = False
@@ -428,16 +482,12 @@ else:
     current_friend = st.session_state["current_friend"]
     current_friend_info = FRIENDS[current_friend]
 
-    # 캐릭터 소개 영역 (대화 내역이 없을 때만 표시)
-    if len(st.session_state["messages"][current_friend]) == 0:
-        st.info(
-            f"### {current_friend_info['emoji']} {current_friend_info['name']}와의 대화"
-        )
-        st.markdown(current_friend_info["intro"])
-        st.divider()
-
-    # 이전 대화 기록 출력
-    print_messages()
+    # 캐릭터 소개 영역 (항상 표시)
+    st.info(
+        f"### {current_friend_info['emoji']} {current_friend_info['name']}와의 대화"
+    )
+    st.markdown(current_friend_info["intro"])
+    st.divider()
 
 # 사용자의 입력
 user_input = st.chat_input("궁금한 내용을 물어보세요!")
@@ -462,12 +512,19 @@ if user_input:
     rag_func = st.session_state.get(rag_func_key)
 
     if chain is not None and rag_func is not None:
+        # 이전 대화 기록 먼저 출력
+        print_messages()
+
+        # 사용자 메시지 출력
+        st.chat_message("user").write(user_input)
+
         # RAG 함수로 컨텍스트 추가
         inputs = rag_func({"question": user_input})
 
         # 친구별 세션 ID
         session_id = f"{selected_friend}_session"
 
+        # AI 응답 스트리밍
         response = chain.stream(
             # 질문과 컨텍스트 입력
             inputs,
@@ -475,23 +532,23 @@ if user_input:
             config={"configurable": {"session_id": session_id}},
         )
 
-        # 사용자의 입력
-        st.chat_message("user").write(user_input)
-
+        # AI 응답을 스트리밍으로 표시
         with st.chat_message("assistant"):
-            # 빈 공간(컨테이너)을 만들어서, 여기에 토큰을 스트리밍 출력한다.
             container = st.empty()
-
             ai_answer = ""
             for token in response:
                 ai_answer += token
                 container.markdown(ai_answer)
 
-            # 대화기록을 저장한다.
-            add_message("user", user_input)
-            add_message("assistant", ai_answer)
+        # 대화기록을 session_state에 저장
+        add_message("user", user_input)
+        add_message("assistant", ai_answer)
     else:
         # RAG 시스템 로드 실패 경고 메시지
         warning_msg.error(
             "RAG 시스템을 로드하지 못했습니다. worlds.txt 파일을 확인해주세요."
         )
+else:
+    # 사용자 입력이 없을 때만 이전 대화 기록 출력
+    if not st.session_state["edit_profile"]:
+        print_messages()
