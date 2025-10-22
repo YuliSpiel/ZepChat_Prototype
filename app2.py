@@ -39,6 +39,37 @@ if not os.path.exists(".cache/embeddings"):
 
 st.title("ZEP 메타버스 월드 추천 챗봇")
 
+
+# 친밀도 레벨 계산 함수
+def get_relationship_level(intimacy_score):
+    """
+    친밀도 점수에 따라 관계 단계와 색상을 반환합니다.
+
+    Args:
+        intimacy_score: 친밀도 점수 (0~100)
+
+    Returns:
+        tuple: (관계 이름, 색상 hex)
+    """
+    if intimacy_score < 20:
+        return "아는 사람", "#FFE6F0"  # 매우 옅은 핑크
+    elif intimacy_score < 40:
+        return "친구", "#FFB3D9"  # 옅은 핑크
+    elif intimacy_score < 60:
+        return "친한 친구", "#FF80C2"  # 중간 핑크
+    elif intimacy_score < 80:
+        return "단짝 친구", "#FF4DAC"  # 진한 핑크
+    else:
+        return "소울메이트", "#FF1A8C"  # 매우 진한 핑크
+
+
+# 친밀도 증가 함수
+def increase_intimacy(friend_id, amount=10):
+    """친밀도를 증가시킵니다 (최대 100)"""
+    current = st.session_state["intimacy"][friend_id]
+    st.session_state["intimacy"][friend_id] = min(100, current + amount)
+
+
 # 친구 프로필 정보
 FRIENDS = {
     "friend1": {
@@ -206,6 +237,15 @@ if "user_birthday" not in st.session_state:
 if "edit_profile" not in st.session_state:
     st.session_state["edit_profile"] = False
 
+# 친밀도 시스템
+if "intimacy" not in st.session_state:
+    # 각 친구별 친밀도 (0~100)
+    st.session_state["intimacy"] = {
+        "friend1": 0,
+        "friend2": 0,
+        "friend3": 0
+    }
+
 
 # 사이드바 생성
 with st.sidebar:
@@ -223,35 +263,75 @@ with st.sidebar:
     # 친구 목록
     st.markdown("### 💬 친구 목록")
 
-    # 친구 1: 월디 (월드 추천 전문가)
+    # 친구 1: 월디
     friend1_info = FRIENDS["friend1"]
-    if st.button(
-        f"{friend1_info['emoji']} {friend1_info['name']}\n{friend1_info['description']}",
-        key="friend1_btn",
-        use_container_width=True,
-    ):
-        st.session_state["current_friend"] = "friend1"
-        st.rerun()
+    intimacy1 = st.session_state["intimacy"]["friend1"]
+    relationship1, color1 = get_relationship_level(intimacy1)
 
-    # 친구 2: 다솜 (다정한 친구)
+    with st.container():
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            st.markdown(f"## {friend1_info['emoji']}")
+        with col2:
+            st.markdown(f"**{friend1_info['name']}** · {relationship1}")
+
+        st.progress(intimacy1 / 100, text=f"친밀도: {intimacy1}%")
+        st.markdown(
+            f"<style>.stProgress > div > div > div > div {{ background-color: {color1}; }}</style>",
+            unsafe_allow_html=True
+        )
+
+        if st.button("💬 대화하기", key="friend1_btn", use_container_width=True):
+            st.session_state["current_friend"] = "friend1"
+            st.rerun()
+
+    st.divider()
+
+    # 친구 2: 다솜
     friend2_info = FRIENDS["friend2"]
-    if st.button(
-        f"{friend2_info['emoji']} {friend2_info['name']}\n{friend2_info['description']}",
-        key="friend2_btn",
-        use_container_width=True,
-    ):
-        st.session_state["current_friend"] = "friend2"
-        st.rerun()
+    intimacy2 = st.session_state["intimacy"]["friend2"]
+    relationship2, color2 = get_relationship_level(intimacy2)
 
-    # 친구 3: 제로 (쿨한 친구)
+    with st.container():
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            st.markdown(f"## {friend2_info['emoji']}")
+        with col2:
+            st.markdown(f"**{friend2_info['name']}** · {relationship2}")
+
+        st.progress(intimacy2 / 100, text=f"친밀도: {intimacy2}%")
+        st.markdown(
+            f"<style>.stProgress > div > div > div > div {{ background-color: {color2}; }}</style>",
+            unsafe_allow_html=True
+        )
+
+        if st.button("💬 대화하기", key="friend2_btn", use_container_width=True):
+            st.session_state["current_friend"] = "friend2"
+            st.rerun()
+
+    st.divider()
+
+    # 친구 3: 제로
     friend3_info = FRIENDS["friend3"]
-    if st.button(
-        f"{friend3_info['emoji']} {friend3_info['name']}\n{friend3_info['description']}",
-        key="friend3_btn",
-        use_container_width=True,
-    ):
-        st.session_state["current_friend"] = "friend3"
-        st.rerun()
+    intimacy3 = st.session_state["intimacy"]["friend3"]
+    relationship3, color3 = get_relationship_level(intimacy3)
+
+    with st.container():
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            st.markdown(f"## {friend3_info['emoji']}")
+        with col2:
+            st.markdown(f"**{friend3_info['name']}** · {relationship3}")
+
+        st.progress(intimacy3 / 100, text=f"친밀도: {intimacy3}%")
+        st.markdown(
+            f"<style>.stProgress > div > div > div > div {{ background-color: {color3}; }}</style>",
+            unsafe_allow_html=True
+        )
+
+        if st.button("💬 대화하기", key="friend3_btn", use_container_width=True):
+            st.session_state["current_friend"] = "friend3"
+            st.rerun()
 
     st.divider()
 
@@ -543,6 +623,9 @@ if user_input:
         # 대화기록을 session_state에 저장
         add_message("user", user_input)
         add_message("assistant", ai_answer)
+
+        # 친밀도 증가 (대화 1회당 5%)
+        increase_intimacy(selected_friend, amount=5)
     else:
         # RAG 시스템 로드 실패 경고 메시지
         warning_msg.error(
