@@ -13,6 +13,12 @@ from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
 import os
 
+# RAG 관련 import
+from langchain_community.document_loaders import TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+
 
 # API KEY 정보로드
 load_dotenv()
@@ -71,15 +77,63 @@ def get_session_history(session_ids):
     return st.session_state["store"][session_ids]  # 해당 세션 ID에 대한 세션 기록 반환
 
 
+# RAG: worlds.txt 파일을 로드하고 벡터 저장소 생성
+@st.cache_resource
+def load_worlds_vectorstore():
+    """worlds.txt 파일을 로드하고 FAISS 벡터 저장소를 생성합니다."""
+    try:
+        # 1. 문서 로드
+        loader = TextLoader("worlds.txt", encoding="utf-8")
+        documents = loader.load()
+
+        # 2. 텍스트 분할 (월드별로 나누기)
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=500, chunk_overlap=50, separators=["\n\n", "\n", " ", ""]
+        )
+        splits = text_splitter.split_documents(documents)
+
+        # 3. 임베딩 생성 및 벡터 저장소 구축
+        # 한국어 특화 SentenceTransformer 모델 사용
+        embeddings = HuggingFaceEmbeddings(
+            model_name="jhgan/ko-sroberta-multitask",
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": True},
+        )
+        vectorstore = FAISS.from_documents(documents=splits, embedding=embeddings)
+
+        return vectorstore
+    except Exception as e:
+        st.error(f"벡터 저장소 로드 실패: {e}")
+        return None
+
+
+# RAG를 활용한 retriever 생성
+def get_retriever():
+    """벡터 저장소에서 retriever를 반환합니다."""
+    vectorstore = load_worlds_vectorstore()
+    if vectorstore:
+        return vectorstore.as_retriever(search_kwargs={"k": 3})  # 상위 3개 결과 반환
+    return None
+
+
 # 체인 생성
 def create_chain(model_name="gpt-4.1-mini"):
+    # retriever 가져오기
+    retriever = get_retriever()
 
-    # 프롬프트 정의
+    # 프롬프트 정의 - RAG 컨텍스트 포함
     prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
-                "당신은 Question-Answering 챗봇입니다. 주어진 질문에 대한 답변을 제공해주세요.",
+                """당신은 ZEP 메타버스의 월드 추천 전문가입니다.
+사용자의 감정이나 요구사항을 이해하고, 아래 제공된 월드 정보를 바탕으로 가장 적합한 월드를 추천해주세요.
+
+# 월드 정보:
+{context}
+
+위 정보를 참고하여 사용자에게 친근하고 상세하게 월드를 소개하고 추천해주세요.
+월드의 테마, 플레이 로직, 감정 키워드 등을 고려하여 답변하세요.""",
             ),
             # 대화기록용 key 인 chat_history 는 가급적 변경 없이 사용하세요!
             MessagesPlaceholder(variable_name="chat_history"),
@@ -90,6 +144,24 @@ def create_chain(model_name="gpt-4.1-mini"):
     # llm 생성
     llm = ChatOpenAI(model_name="gpt-4.1-mini")
 
+    # RAG 체인 생성
+    def format_docs(docs):
+        return "\n\n".join(doc.page_content for doc in docs)
+
+    # retriever를 사용하여 컨텍스트를 가져오는 체인
+    def rag_chain_func(inputs):
+        # retriever로 관련 문서 검색
+        if retriever:
+            # invoke 메서드 사용 (LangChain 최신 버전)
+            docs = retriever.invoke(inputs["question"])
+            context = format_docs(docs)
+        else:
+            context = "월드 정보를 로드할 수 없습니다."
+
+        # 프롬프트에 컨텍스트 추가
+        inputs["context"] = context
+        return inputs
+
     # 일반 Chain 생성
     chain = prompt | llm | StrOutputParser()
 
@@ -99,7 +171,7 @@ def create_chain(model_name="gpt-4.1-mini"):
         input_messages_key="question",  # 사용자의 질문이 템플릿 변수에 들어갈 key
         history_messages_key="chat_history",  # 기록 메시지의 키
     )
-    return chain_with_history
+    return chain_with_history, rag_chain_func
 
 
 # 초기화 버튼이 눌리면...
@@ -116,16 +188,23 @@ user_input = st.chat_input("궁금한 내용을 물어보세요!")
 warning_msg = st.empty()
 
 if "chain" not in st.session_state:
-    st.session_state["chain"] = create_chain(model_name=selected_model)
+    chain_with_history, rag_func = create_chain(model_name=selected_model)
+    st.session_state["chain"] = chain_with_history
+    st.session_state["rag_func"] = rag_func
 
 
 # 만약에 사용자 입력이 들어오면...
 if user_input:
     chain = st.session_state["chain"]
-    if chain is not None:
+    rag_func = st.session_state.get("rag_func")
+
+    if chain is not None and rag_func is not None:
+        # RAG 함수로 컨텍스트 추가
+        inputs = rag_func({"question": user_input})
+
         response = chain.stream(
-            # 질문 입력
-            {"question": user_input},
+            # 질문과 컨텍스트 입력
+            inputs,
             # 세션 ID 기준으로 대화를 기록합니다.
             config={"configurable": {"session_id": session_id}},
         )
@@ -146,5 +225,7 @@ if user_input:
             add_message("user", user_input)
             add_message("assistant", ai_answer)
     else:
-        # 이미지를 업로드 하라는 경고 메시지 출력
-        warning_msg.error("이미지를 업로드 해주세요.")
+        # RAG 시스템 로드 실패 경고 메시지
+        warning_msg.error(
+            "RAG 시스템을 로드하지 못했습니다. worlds.txt 파일을 확인해주세요."
+        )
