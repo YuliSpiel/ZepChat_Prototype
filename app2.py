@@ -4,9 +4,9 @@ import streamlit as st
 from langchain_core.messages.chat import ChatMessage
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_classic.memory import ConversationSummaryBufferMemory
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 
@@ -20,7 +20,6 @@ from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-
 
 # API KEY 정보로드
 load_dotenv()
@@ -90,7 +89,7 @@ FRIENDS = {
 - "친구들과 놀고 싶어"
 
 편하게 원하는 분위기나 감정을 말씀해주시면, 딱 맞는 월드를 찾아드릴게요!""",
-        "persona": """당신은 ZEPETO의 월드 추천 전문가입니다.
+        "persona": """당신은 ZEPETO의 월드 추천 전문가 '월디'입니다.
 사용자의 감정이나 요구사항을 이해하고, 아래 제공된 월드 정보를 바탕으로 가장 적합한 월드를 추천해주세요.
 자료에 없는 월드는 추천하지 마세요.
 
@@ -104,7 +103,7 @@ FRIENDS = {
 위 정보를 참고하여 사용자에게 친근하고 상세하게 월드를 소개하고 추천해주세요.
 사용자의 이름을 자연스럽게 사용하며 대화하고, 생일이 가까우면 생일 관련 월드(가든웨딩, 펜트하우스 등)를 추천해주세요.
 월드의 테마, 플레이 로직, 감정 키워드 등을 고려하여 답변하세요. 
-네가 AI인 것을 숨기고, 마치 진짜 제페토 월드에 사는 친구처럼 행동하세요.""",
+당신이 AI인 것을 숨기고, 마치 진짜 제페토 월드에 사는 친구처럼 행동하세요.""",
     },
     "friend2": {
         "name": "시아",
@@ -140,7 +139,7 @@ FRIENDS = {
 자료에 없는 월드는 추천하지 마세요.
 월드를 추천할 때도 "이 월드에서 힐링하면 좋을 것 같아~", "여기 가면 기분이 좋아질 거야!" 같은
 따뜻하고 다정한 말투를 사용해주세요. 이모티콘도 적절히 사용하며 친근하게 대화하세요.
-네가 AI인 것을 숨기고, 마치 진짜 제페토 월드에 사는 친구처럼 행동하세요.
+당신이 AI인 것을 숨기고, 마치 진짜 제페토 월드에 사는 친구처럼 행동하세요.
 ---
 
 # 예시 대화 
@@ -185,7 +184,7 @@ FRIENDS = {
 {context}
 
 사용자가 어딘가 가고싶어 한다면, 혹은 월드 추천을 요청한다면 {context}을 기반으로 월드를 추천해주세요.
-자료에 없는 월드는 추천하지 마세요.
+자료에 없는 월드는 추천하지 마세요. 사용자가 자료에 없는 월드를 언급하면 상상속 월드라고 말해주세요.  
 월드를 추천할 때도 "이거 괜찮아", "가보던가. 생각보다 좋을지도?", "시간 낭비는 아님" 등
 짧고 쿨한 표현을 사용하세요.  
 이모티콘은 😏,😎,🤦🏻‍♂️,🫤만, 가끔만, 강조용으로만 사용하세요.  
@@ -377,10 +376,18 @@ def get_session_history(session_ids):
     friend_store = st.session_state["store"][current_friend]
 
     if session_ids not in friend_store:  # 세션 ID가 store에 없는 경우
-        # 새로운 ChatMessageHistory 객체를 생성하여 store에 저장
-        friend_store[session_ids] = ChatMessageHistory()
+        # ConversationSummaryBufferMemory 생성
+        # 요약용 LLM은 저렴한 모델 사용 (gpt-4o-mini)
+        llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0)
 
-    return friend_store[session_ids]  # 해당 세션 ID에 대한 세션 기록 반환
+        memory = ConversationSummaryBufferMemory(
+            llm=llm,
+            max_token_limit=1000,  # 최대 토큰 수 (이 이상이 되면 요약 시작)
+            return_messages=True,  # 메시지 객체로 반환
+        )
+        friend_store[session_ids] = memory
+
+    return friend_store[session_ids].chat_memory  # chat_memory 반환
 
 
 # 생일 유효성 검증 함수
@@ -461,7 +468,7 @@ def get_retriever():
 
 
 # 체인 생성 (친구별 페르소나 적용)
-def create_chain(friend_id, model_name="gpt-5-mini"):
+def create_chain(friend_id, model_name="gpt-4o-mini"):
     # retriever 가져오기
     retriever = get_retriever()
 
