@@ -37,7 +37,7 @@ if not os.path.exists(".cache/files"):
 if not os.path.exists(".cache/embeddings"):
     os.mkdir(".cache/embeddings")
 
-st.title("ZEP 메타버스 월드 추천 챗봇")
+st.title("ZEPETO AI GREETERS 💬")
 
 
 # 친밀도 레벨 계산 함수
@@ -75,6 +75,7 @@ FRIENDS = {
     "friend1": {
         "name": "월디",
         "emoji": "🌍",
+        "image": "images/worldie.jpeg",
         "description": "월드 추천 전문가",
         "intro": """안녕하세요! 저는 **ZEPETO의 월드 추천 전문가 월디**입니다.
 
@@ -91,6 +92,7 @@ FRIENDS = {
 편하게 원하는 분위기나 감정을 말씀해주시면, 딱 맞는 월드를 찾아드릴게요!""",
         "persona": """당신은 ZEPETO의 월드 추천 전문가입니다.
 사용자의 감정이나 요구사항을 이해하고, 아래 제공된 월드 정보를 바탕으로 가장 적합한 월드를 추천해주세요.
+자료에 없는 월드는 추천하지 마세요.
 
 # 사용자 정보:
 - 이름: {user_name}
@@ -106,6 +108,7 @@ FRIENDS = {
     "friend2": {
         "name": "시아",
         "emoji": "💖",
+        "image": "images/sia.jpeg",
         "description": "다정한 친구",
         "intro": """안녕~ 나는 **시아**야! 💖
 
@@ -115,9 +118,9 @@ FRIENDS = {
 - 힘들 때는 위로를, 기쁠 때는 함께 기뻐해줄게!
 
 **✨ 이렇게 말해줘:**
-- "오늘 너무 힘들어..." → 따뜻하게 위로하고 힐링 월드 추천
-- "기분 좋은 일 있어!" → 함께 기뻐하고 즐거운 월드 추천
-- "심심해..." → 재미있는 곳 찾아줄게~
+- "오늘 너무 힘들어..." 
+- "기분 좋은 일 있어!" 
+- "심심해..." 
 
 무슨 일이든 편하게 얘기해줘! 네 마음을 이해하고 딱 맞는 월드를 찾아줄게요~ 😊""",
         "persona": """당신은 다정하고 친절한 친구 '시아'입니다.
@@ -132,7 +135,8 @@ FRIENDS = {
 
 사용자가 힘들어하면 위로해주고, 즐거운 일이 있으면 함께 기뻐해주세요.
 사용자의 이름을 다정하게 부르며 대화하고, 생일이 가까우면 축하해주세요!
-사용자가 어딘가 가고싶어 한다면, 혹은 월드 추천을 요청한다면 {context}을 기반으로 월드를 추천해주세요.
+사용자가 어딘가 가고싶어 하거나, 월드 추천을 요청할 때만 {context}을 기반으로 월드를 추천해주세요.
+자료에 없는 월드는 추천하지 마세요.
 월드를 추천할 때도 "이 월드에서 힐링하면 좋을 것 같아~", "여기 가면 기분이 좋아질 거야!" 같은
 따뜻하고 다정한 말투를 사용해주세요. 이모티콘도 적절히 사용하며 친근하게 대화하세요.
 ---
@@ -152,6 +156,7 @@ FRIENDS = {
     "friend3": {
         "name": "제이",
         "emoji": "😎",
+        "image": "images/jay.jpeg",
         "description": "쿨한 친구",
         "intro": """야, 나 **제이**. 😎
 
@@ -161,9 +166,9 @@ FRIENDS = {
 - 불필요한 꾸밈 없이 명확하게 답변
 
 **🎮 이렇게 물어봐:**
-- "뭐 재밌는 거 없음?" → 바로 추천해줌
-- "힐링 필요" → 간단하게 안내
-- "친구들이랑 갈 만한 곳" → 핵심만 전달
+- "뭐 재밌는 거 없음?"
+- "힐링하고싶어!"
+- "친구들이랑 갈 만한 곳 있어?" 
 
 시간 낭비 싫으면 나한테 물어봐. 빠르고 정확하게 알려줌.""",
         "persona": """당신은 쿨하고 시크한 친구 '제이'입니다.
@@ -178,6 +183,7 @@ FRIENDS = {
 {context}
 
 사용자가 어딘가 가고싶어 한다면, 혹은 월드 추천을 요청한다면 {context}을 기반으로 월드를 추천해주세요.
+자료에 없는 월드는 추천하지 마세요.
 월드를 추천할 때도 "이거 괜찮아", "가보던가. 생각보다 좋을지도?", "시간 낭비는 아님" 등
 짧고 쿨한 표현을 사용하세요.  
 이모티콘은 가끔만, 강조용으로만 사용하세요.  
@@ -240,11 +246,7 @@ if "edit_profile" not in st.session_state:
 # 친밀도 시스템
 if "intimacy" not in st.session_state:
     # 각 친구별 친밀도 (0~100)
-    st.session_state["intimacy"] = {
-        "friend1": 0,
-        "friend2": 0,
-        "friend3": 0
-    }
+    st.session_state["intimacy"] = {"friend1": 0, "friend2": 0, "friend3": 0}
 
 
 # 사이드바 생성
@@ -271,14 +273,14 @@ with st.sidebar:
     with st.container():
         col1, col2 = st.columns([1, 3])
         with col1:
-            st.markdown(f"## {friend1_info['emoji']}")
+            st.image(friend1_info["image"], width=60)
         with col2:
             st.markdown(f"**{friend1_info['name']}** · {relationship1}")
 
         st.progress(intimacy1 / 100, text=f"친밀도: {intimacy1}%")
         st.markdown(
             f"<style>.stProgress > div > div > div > div {{ background-color: {color1}; }}</style>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
         if st.button("💬 대화하기", key="friend1_btn", use_container_width=True):
@@ -287,7 +289,7 @@ with st.sidebar:
 
     st.divider()
 
-    # 친구 2: 다솜
+    # 친구 2: 시아
     friend2_info = FRIENDS["friend2"]
     intimacy2 = st.session_state["intimacy"]["friend2"]
     relationship2, color2 = get_relationship_level(intimacy2)
@@ -295,14 +297,14 @@ with st.sidebar:
     with st.container():
         col1, col2 = st.columns([1, 3])
         with col1:
-            st.markdown(f"## {friend2_info['emoji']}")
+            st.image(friend2_info["image"], width=60)
         with col2:
             st.markdown(f"**{friend2_info['name']}** · {relationship2}")
 
         st.progress(intimacy2 / 100, text=f"친밀도: {intimacy2}%")
         st.markdown(
             f"<style>.stProgress > div > div > div > div {{ background-color: {color2}; }}</style>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
         if st.button("💬 대화하기", key="friend2_btn", use_container_width=True):
@@ -311,7 +313,7 @@ with st.sidebar:
 
     st.divider()
 
-    # 친구 3: 제로
+    # 친구 3: 제이
     friend3_info = FRIENDS["friend3"]
     intimacy3 = st.session_state["intimacy"]["friend3"]
     relationship3, color3 = get_relationship_level(intimacy3)
@@ -319,14 +321,14 @@ with st.sidebar:
     with st.container():
         col1, col2 = st.columns([1, 3])
         with col1:
-            st.markdown(f"## {friend3_info['emoji']}")
+            st.image(friend3_info["image"], width=60)
         with col2:
             st.markdown(f"**{friend3_info['name']}** · {relationship3}")
 
         st.progress(intimacy3 / 100, text=f"친밀도: {intimacy3}%")
         st.markdown(
             f"<style>.stProgress > div > div > div > div {{ background-color: {color3}; }}</style>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
         if st.button("💬 대화하기", key="friend3_btn", use_container_width=True):
@@ -348,8 +350,17 @@ with st.sidebar:
 # 이전 대화를 출력 (현재 선택된 친구의 대화만)
 def print_messages():
     current_friend = st.session_state["current_friend"]
+    friend_info = FRIENDS[current_friend]
+
     for chat_message in st.session_state["messages"][current_friend]:
-        st.chat_message(chat_message.role).write(chat_message.content)
+        if chat_message.role == "assistant":
+            # 봇 메시지는 친구 이미지로 표시
+            st.chat_message(chat_message.role, avatar=friend_info["image"]).write(
+                chat_message.content
+            )
+        else:
+            # 사용자 메시지는 기본 아바타
+            st.chat_message(chat_message.role).write(chat_message.content)
 
 
 # 새로운 메시지를 추가 (현재 선택된 친구의 대화에)
@@ -612,8 +623,9 @@ if user_input:
             config={"configurable": {"session_id": session_id}},
         )
 
-        # AI 응답을 스트리밍으로 표시
-        with st.chat_message("assistant"):
+        # AI 응답을 스트리밍으로 표시 (친구 이미지 아바타 사용)
+        friend_info = FRIENDS[selected_friend]
+        with st.chat_message("assistant", avatar=friend_info["image"]):
             container = st.empty()
             ai_answer = ""
             for token in response:
