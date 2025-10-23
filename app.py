@@ -93,12 +93,8 @@ def to_lc_history(persona: str, max_turns: int = HISTORY_MAX_TURNS) -> List:
 
 
 # ==============================
-# KB 로딩 & 파싱 (월드명/상황 포맷 전용)
+# KB 로딩 & 파싱 (새 형식: 인덱스/태그/월드명/키워드/전경/로직)
 # ==============================
-WORLD_SPLIT_RE = re.compile(r"월드명\s*<([^>]+)>\s*", re.MULTILINE)
-SITUATION_RE = re.compile(r"상황\s*:\s*(.+)", re.IGNORECASE)
-
-
 def read_local_text(path: str) -> str:
     abs_path = os.path.abspath(path)
     with open(abs_path, "r", encoding="utf-8") as f:
@@ -106,28 +102,80 @@ def read_local_text(path: str) -> str:
 
 
 def parse_worlds(text: str) -> List[Dict]:
-    blocks = WORLD_SPLIT_RE.split(text)
+    """
+    새로운 형식의 worlds.txt 파일 파싱:
+    인덱스: N
+    태그: ...
+    월드명: ...
+    테마 키워드: ...
+    감정 키워드: ...
+    월드 전경: ...
+    플레이 로직: ...
+    """
     worlds = []
-    for i in range(1, len(blocks), 2):
-        name = blocks[i].strip()
-        body = (blocks[i + 1] if i + 1 < len(blocks) else "").strip()
-        tags = []
-        m = SITUATION_RE.search(body)
-        if m:
-            raw = m.group(1)
-            parts = re.split(r"[\/,|·]\s*|\s{2,}", raw)
-            if len(parts) == 1:
-                parts = re.split(r"[\s/,\|·]+", raw)
-            tags = [p.strip() for p in parts if p and p.strip()]
-        preview = re.sub(r"\s+", " ", body)[:140] + ("..." if len(body) > 140 else "")
-        worlds.append(
-            {
-                "name": name,
-                "tags": list(dict.fromkeys(tags)),
-                "text": body,
+    # 빈 줄로 월드 블록 분리
+    blocks = text.strip().split("\n\n")
+
+    for block in blocks:
+        if not block.strip():
+            continue
+
+        lines = block.strip().split("\n")
+        world_data = {
+            "index": "",
+            "category_tags": [],
+            "name": "",
+            "theme_keywords": [],
+            "emotion_keywords": [],
+            "scene": "",
+            "gameplay": "",
+        }
+
+        for line in lines:
+            line = line.strip()
+            if line.startswith("인덱스:"):
+                world_data["index"] = line.replace("인덱스:", "").strip()
+            elif line.startswith("태그:"):
+                tags_raw = line.replace("태그:", "").strip()
+                world_data["category_tags"] = [t.strip() for t in tags_raw.split(",") if t.strip()]
+            elif line.startswith("월드명:"):
+                world_data["name"] = line.replace("월드명:", "").strip()
+            elif line.startswith("테마 키워드:"):
+                keywords_raw = line.replace("테마 키워드:", "").strip()
+                world_data["theme_keywords"] = [k.strip() for k in keywords_raw.split(",") if k.strip()]
+            elif line.startswith("감정 키워드:"):
+                emotions_raw = line.replace("감정 키워드:", "").strip()
+                world_data["emotion_keywords"] = [e.strip() for e in emotions_raw.split(",") if e.strip()]
+            elif line.startswith("월드 전경:"):
+                world_data["scene"] = line.replace("월드 전경:", "").strip()
+            elif line.startswith("플레이 로직:"):
+                world_data["gameplay"] = line.replace("플레이 로직:", "").strip()
+
+        # 필수 필드가 있는 경우만 추가
+        if world_data["name"]:
+            # 모든 태그 통합 (카테고리 + 테마 + 감정)
+            all_tags = (
+                world_data["category_tags"]
+                + world_data["theme_keywords"]
+                + world_data["emotion_keywords"]
+            )
+            # 중복 제거
+            all_tags = list(dict.fromkeys(all_tags))
+
+            # 전체 텍스트 생성 (임베딩용)
+            full_text = f"{world_data['scene']} {world_data['gameplay']}"
+
+            # 요약 생성 (표시용)
+            preview = world_data['scene'][:140] + ("..." if len(world_data['scene']) > 140 else "")
+
+            worlds.append({
+                "name": world_data["name"],
+                "tags": all_tags,
+                "text": full_text,
                 "short": preview,
-            }
-        )
+                "raw_data": world_data,  # 원본 데이터 보관
+            })
+
     return worlds
 
 
@@ -140,9 +188,22 @@ def ensure_embed_model():
 
 
 def build_index(worlds: List[Dict]):
+    """
+    월드 데이터를 임베딩하고 FAISS 인덱스 구축
+    새로운 형식: 월드명 + 모든 키워드(태그/테마/감정) + 전경 + 플레이로직
+    """
     ensure_embed_model()
     model = st.session_state["embed_model"]
-    corpus = [f"{w['name']}\n태그: {' '.join(w['tags'])}\n{w['text']}" for w in worlds]
+
+    # 임베딩용 코퍼스 생성: 월드명, 태그들, 전경, 플레이 로직을 모두 포함
+    corpus = []
+    for w in worlds:
+        # 태그를 명시적으로 강조하여 검색 정확도 향상
+        tags_str = ", ".join(w['tags'])
+        # 월드명 + 태그(2회 반복으로 가중치 부여) + 본문
+        entry = f"월드명: {w['name']}\n키워드: {tags_str}\n감정/테마: {tags_str}\n설명: {w['text']}"
+        corpus.append(entry)
+
     embs = model.encode(corpus, convert_to_numpy=True, show_progress_bar=False)
     norms = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-12
     normed = embs / norms
@@ -158,6 +219,10 @@ def build_index(worlds: List[Dict]):
 # 검색(의미 + 태그 부스팅)
 # ==============================
 def retrieve_worlds(query: str, topk: int = TOP_K) -> List[Tuple[Dict, float]]:
+    """
+    사용자 쿼리에 대해 가장 관련도 높은 월드 검색
+    의미적 유사도 + 키워드 매칭 부스팅 결합
+    """
     worlds = st.session_state["kb_worlds"]
     idx = st.session_state["kb_index"]
     mat = st.session_state["kb_matrix"]
@@ -166,46 +231,62 @@ def retrieve_worlds(query: str, topk: int = TOP_K) -> List[Tuple[Dict, float]]:
     ensure_embed_model()
     q_emb = st.session_state["embed_model"].encode([query], convert_to_numpy=True)
     q_emb = q_emb / (np.linalg.norm(q_emb, axis=1, keepdims=True) + 1e-12)
+
     # 여유있게 뽑은 뒤 부스팅 적용
     D, I = idx.search(q_emb.astype("float32"), max(10, topk * 5))
     cand = []
     q_lower = query.lower()
+
     for i, score in zip(I[0], D[0]):
         if i == -1:
             continue
         w = worlds[i]
         boosted = float(score)
+
+        # 1. 태그 직접 매칭 시 높은 부스팅
         for t in w["tags"]:
             if t and t.lower() in q_lower:
                 boosted += TAG_BOOST
-        for kw in [
-            "영어",
-            "dance",
-            "춤",
-            "학교",
-            "교실",
-            "카페",
-            "캠핑",
-            "파티",
-            "공항",
-            "런웨이",
-            "벚꽃",
-            "동물",
-            "익명",
-            "상담",
-            "우울",
-            "바다",
-            "크루즈",
-            "고민",
-            "슬퍼",
-            "추워",
-            "코디",
-        ]:
-            if kw in q_lower and kw in (
-                w["name"] + " " + " ".join(w["tags"]) + " " + w["text"]
-            ):
-                boosted += TAG_BOOST / 2
+
+        # 2. 감정 키워드 특별 부스팅 (사용자 감정 표현 우선)
+        if "raw_data" in w and "emotion_keywords" in w["raw_data"]:
+            for emotion in w["raw_data"]["emotion_keywords"]:
+                # 감정 키워드는 부분 일치도 허용 (예: "심심해" in "심심해서")
+                if emotion and any(emotion.lower() in word for word in q_lower.split()):
+                    boosted += TAG_BOOST * 1.5  # 감정 키워드는 더 높은 가중치
+
+        # 3. 추가 컨텍스트 키워드 부스팅
+        context_keywords = {
+            # 활동 관련
+            "영어": ["영어", "english"],
+            "춤": ["춤", "dance", "댄스"],
+            "학교": ["학교", "교실", "수업"],
+            "카페": ["카페", "커피", "쉬고"],
+            "캠핑": ["캠핑", "별", "숲", "자연"],
+            "파티": ["파티", "party", "놀고"],
+            "공항": ["공항", "여행", "비행"],
+            "런웨이": ["런웨이", "패션", "옷"],
+            "벚꽃": ["벚꽃", "꽃", "봄"],
+            "동물": ["동물", "펫", "귀여"],
+            "바다": ["바다", "물", "수영", "크루즈"],
+            # 감정 관련
+            "익명": ["익명", "비밀", "고민"],
+            "우울": ["우울", "슬퍼", "상담"],
+            "힐링": ["힐링", "쉬고", "편안", "조용"],
+            "짜릿": ["짜릿", "스릴", "긴장"],
+        }
+
+        world_text = w["name"] + " " + " ".join(w["tags"]) + " " + w["text"]
+        world_text_lower = world_text.lower()
+
+        for main_kw, variants in context_keywords.items():
+            for variant in variants:
+                if variant in q_lower and main_kw in world_text_lower:
+                    boosted += TAG_BOOST / 2
+                    break
+
         cand.append((w, boosted))
+
     cand = sorted(cand, key=lambda x: x[1], reverse=True)
     return cand[:topk]
 
