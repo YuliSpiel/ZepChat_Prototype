@@ -1,5 +1,17 @@
+# UI Framework
 streamlit
+
+# LangChain Core
+langchain-core
 langchain-openai
+langchain-community
+langchain-text-splitters
+langchain-classic
+
+# RAG & Embeddings
 sentence-transformers
 faiss-cpu
+
+# Utilities
 python-dotenv
+requests
